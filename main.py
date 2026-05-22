@@ -9,9 +9,9 @@ sem = asyncio.Semaphore(100)
 
 # مصفوفة التوكنات والحسابات الخاصة بك (ضع توكناتك الحقيقية هنا داخل الأقواس)
 AUTH_TOKENS = [
-    "token_1_here",
-    "token_2_here",
-    "token_3_here"
+    "b30bfc0179be3b8e207fb145ff4a01e1084b6267",
+    "t5c73e094554345596a9140173e87c91a62a2958a",
+    "a96a102b6424133e4ef843e3c808cd942c32229c"
 ]
 
 async def send_x_request(session, token, tweet_id, service_type):
