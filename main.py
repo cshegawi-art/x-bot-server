@@ -1,9 +1,8 @@
-import asyncio
 import os
 import json
 import threading
+import requests
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from playwright.async_api import async_playwright
 
 # مصفوفة التوكنات الخاصة بحساباتك الفعلية المأخوذة من صورتك السابقة
 AUTH_TOKENS = [
@@ -12,48 +11,49 @@ AUTH_TOKENS = [
     "a9ba182b6424133a4bf4aa3e8c0dbcd947c32229"
 ]
 
-async def execute_x_action(token, tweet_id, service_type):
-    async with async_playwright() as p:
-        # تشغيل متصفح خفي ذكي وسريع
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context()
+def send_x_action(token, tweet_id, service_type):
+    # إعداد جلسة اتصال لالتقاط وتمرير توكنات الأمان المتغيرة تلقائياً
+    session = requests.Session()
+    
+    # 1. الاتصال المبدئي لتهيئة الكوكيز وجلب توكن الـ CSRF (ct0) من الحساب
+    init_url = "https://x.com"
+    cookies = {'auth_token': token}
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
+    
+    try:
+        init_res = session.get(init_url, cookies=cookies, headers=headers, timeout=10)
+        csrf_token = session.cookies.get('ct0', domain='.x.com')
         
-        # حقن الـ auth_token الخاص بك داخل ملفات تعريف ارتباط المتصفح
-        await context.add_cookies([{
-            'name': 'auth_token',
-            'value': token,
-            'domain': '.x.com',
-            'path': '/'
-        }])
+        if not csrf_token:
+            print(f"[FAILED] الحساب {token[:10]}... فشل استخراج توكن الأمان ct0 (تأكد من صلاحية الحساب)")
+            return
+
+        # 2. تحديد رابط الخدمة وصياغة الهيدرز الأمنية الإجبارية لمنصة X
+        url = "https://x.com" if service_type == "comments" else "https://x.com"
         
-        page = await context.new_page()
-        try:
-            # التوجه مباشرة إلى رابط التغريدة المستهدفة
-            await page.goto(f"https://x.com{tweet_id}", timeout=30000)
-            await page.wait_for_timeout(3000) # انتظار تحميل واجهة الصفحة
-            
-            if service_type == "comments":
-                # البحث التلقائي عن صندوق كتابة التعليق (الرد)
-                comment_box = await page.query_selector('[data-testid="tweetTextarea_0"]')
-                if comment_box:
-                    await comment_box.click()
-                    await comment_box.fill("تعليق تلقائي سريع ومستقر! 🚀")
-                    # الضغط على زر إرسال الرد
-                    reply_btn = await page.query_selector('[data-testid="tweetButtonInline"]')
-                    if reply_btn:
-                        await reply_btn.click()
-                        print(f"[SUCCESS] الحساب {token[:10]}... أرسل التعليق بنجاح.")
-            else:
-                # خدمة اللايكات: البحث عن زر الإعجاب والضغط عليه
-                like_btn = await page.query_selector('[data-testid="like"]')
-                if like_btn:
-                    await like_btn.click()
-                    print(f"[SUCCESS] الحساب {token[:10]}... وضع إعجاب بنجاح.")
-                    
-        except Exception as e:
-            print(f"[ERROR] فشل التنفيذ للحساب {token[:10]}... بسبب: {e}")
-        finally:
-            await browser.close()
+        api_headers = {
+            'Authorization': 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
+            'X-Twitter-Auth-Type': 'OAuth2Session',
+            'X-Twitter-Active-User': 'yes',
+            'X-Csrf-Token': csrf_token, # السطر السحري لتخطي نظام حماية X
+            'Content-Type': 'application/json',
+            'User-Agent': headers['User-Agent']
+        }
+        
+        payload = {}
+        if service_type == "comments":
+            payload = {"variables": {"tweet_text": "تم الإرسال بنجاح واستقرار! 🚀", "reply": {"in_reply_to_tweet_id": tweet_id}, "dark_request": False, "semantic_annotation_ids": []}, "features": {"tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled": True, "longform_notetweets_inline_comments_enabled": True, "responsive_web_edit_tweet_api_enabled": True}}
+        else:
+            payload = {"variables": {"tweet_id": tweet_id}, "features": {"responsive_web_twitter_article_tweet_consumption_enabled": True}}
+
+        # قذف العملية فوراً
+        response = session.post(url, json=payload, headers=api_headers, cookies=cookies, timeout=10)
+        print(f"[REPORT] الحساب: {token[:10]}... | الخدمة: {service_type} | كود الاستجابة: {response.status_code}")
+        
+    except Exception as e:
+        print(f"[ERROR] خطأ اتصال بالحساب {token[:10]}... : {e}")
 
 # دالة استقبال طلبات الـ API الفورية الصادرة من موقعك
 def start_api_web_server():
@@ -75,13 +75,14 @@ def start_api_web_server():
                     service_type = order.get('service_type', 'comments')
                     tweet_id     = order.get('tweet_id', '')
                     quantity     = int(order.get('quantity', 1))
-                    delay_time   = int(order.get('delay_time', 5))
                     
-                    print(f"\n📡 تم استقبال أمر قذف سحابي متزامن عبر المتصفح الذكي!")
+                    print(f"\n📡 تم استقبال أمر قذف سحابي متزامن وموثوق!")
                     print(f"🚀 الخدمة: {service_type} | المعرف: {tweet_id} | العدد: {quantity}")
                     
-                    # إطلاق الأتمتة فوراً في الخلفية بالتوازي لكل الحسابات
-                    threading.Thread(target=lambda: asyncio.run(run_browser_blast(service_type, tweet_id, quantity, delay_time)), daemon=True).start()
+                    # إطلاق الأتمتة فوراً بالتوازي لكل الحسابات عبر الـ Threads الخفيفة
+                    selected_tokens = AUTH_TOKENS[:quantity]
+                    for token in selected_tokens:
+                        threading.Thread(target=send_x_action, args=(token, tweet_id, service_type), daemon=True).start()
                     
                     self.send_response(200)
                     self.send_header('Content-type', 'application/json')
@@ -96,21 +97,10 @@ def start_api_web_server():
             self.send_response(200)
             self.send_header("Content-type", "text/plain")
             self.end_headers()
-            self.wfile.write(b"X-Bot Browser API Server is Active!")
+            self.wfile.write(b"X-Bot Secure API Server is Active!")
 
     server = HTTPServer(('0.0.0.0', port), APIServerHandler)
     server.serve_forever()
-
-async def run_browser_blast(service_type, tweet_id, quantity, delay_time):
-    selected_tokens = AUTH_TOKENS[:quantity]
-    tasks = []
-    for token in selected_tokens:
-        tasks.append(execute_x_action(token, tweet_id, service_type))
-        if delay_time > 0:
-            await asyncio.sleep(delay_time)
-            
-    await asyncio.gather(*tasks)
-    print("✨ انتهت دورة القذف المتصفحي بالكامل.")
 
 def main():
     start_api_web_server()
