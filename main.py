@@ -4,7 +4,7 @@ import threading
 import requests
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-# مصفوفة التوكنات الخاصة بحساباتك الفعلية المأخوذة من صورتك السابقة
+# قائمة التوكنات الفعلية الخاصة بحساباتك الثلاثة المأخوذة من لقطة الشاشة السابقة
 AUTH_TOKENS = [
     "b30b6fc0179be3b8e287fb145ff4a81e1884b267",
     "f5c73c894554345596a9140173e87c91a62a29da",
@@ -12,10 +12,9 @@ AUTH_TOKENS = [
 ]
 
 def send_x_action(token, tweet_id, service_type):
-    # إعداد جلسة اتصال لالتقاط وتمرير توكنات الأمان المتغيرة تلقائياً
     session = requests.Session()
     
-    # 1. الاتصال المبدئي لتهيئة الكوكيز وجلب توكن الـ CSRF (ct0) من الحساب
+    # 1. تهيئة الكوكيز وجلب توكن الأمان ct0 الإجباري لموقع X
     init_url = "https://x.com"
     cookies = {'auth_token': token}
     headers = {
@@ -27,35 +26,35 @@ def send_x_action(token, tweet_id, service_type):
         csrf_token = session.cookies.get('ct0', domain='.x.com')
         
         if not csrf_token:
-            print(f"[FAILED] الحساب {token[:10]}... فشل استخراج توكن الأمان ct0 (تأكد من صلاحية الحساب)")
+            print(f"[FAILED] الحساب {token[:10]}... فشل استخراج توكن الأمان ct0 المتغير.")
             return
 
-        # 2. تحديد رابط الخدمة وصياغة الهيدرز الأمنية الإجبارية لمنصة X
+        # 2. تحديد المعرفات الأمنية الصارمة وتجهيز الطلب الخلفي الخفيف
         url = "https://x.com" if service_type == "comments" else "https://x.com"
         
         api_headers = {
             'Authorization': 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
             'X-Twitter-Auth-Type': 'OAuth2Session',
             'X-Twitter-Active-User': 'yes',
-            'X-Csrf-Token': csrf_token, # السطر السحري لتخطي نظام حماية X
+            'X-Csrf-Token': csrf_token,
             'Content-Type': 'application/json',
             'User-Agent': headers['User-Agent']
         }
         
         payload = {}
         if service_type == "comments":
-            payload = {"variables": {"tweet_text": "تم الإرسال بنجاح واستقرار! 🚀", "reply": {"in_reply_to_tweet_id": tweet_id}, "dark_request": False, "semantic_annotation_ids": []}, "features": {"tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled": True, "longform_notetweets_inline_comments_enabled": True, "responsive_web_edit_tweet_api_enabled": True}}
+            payload = {"variables": {"tweet_text": "تم المعالجة والإطلاق بنجاح! 🚀", "reply": {"in_reply_to_tweet_id": tweet_id}, "dark_request": False, "semantic_annotation_ids": []}, "features": {"tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled": True, "longform_notetweets_inline_comments_enabled": True, "responsive_web_edit_tweet_api_enabled": True}}
         else:
             payload = {"variables": {"tweet_id": tweet_id}, "features": {"responsive_web_twitter_article_tweet_consumption_enabled": True}}
 
-        # قذف العملية فوراً
+        # إطلاق عملية القذف الفوري
         response = session.post(url, json=payload, headers=api_headers, cookies=cookies, timeout=10)
-        print(f"[REPORT] الحساب: {token[:10]}... | الخدمة: {service_type} | كود الاستجابة: {response.status_code}")
+        print(f"[REPORT] الحساب: {token[:10]}... | الخدمة: {service_type} | كود استجابة X: {response.status_code}")
         
     except Exception as e:
-        print(f"[ERROR] خطأ اتصال بالحساب {token[:10]}... : {e}")
+        print(f"[ERROR] فشل الاتصال بالحساب {token[:10]}... : {e}")
 
-# دالة استقبال طلبات الـ API الفورية الصادرة من موقعك
+# نظام خادم الويب الشامل لمعالجة واستقبال الطلبات من أي مسار برميجي
 def start_api_web_server():
     port = int(os.environ.get("PORT", 10000))
     class APIServerHandler(BaseHTTPRequestHandler):
@@ -67,7 +66,8 @@ def start_api_web_server():
             self.end_headers()
 
         def do_POST(self):
-            if self.path == "/create_order":
+            # قبول الطلبات ومعالجتها سواء جاءت على مسار التوجيه أو الرابط الأساسي لضمان المرونة
+            if self.path == "/create_order" or self.path == "/":
                 content_length = int(self.headers['Content-Length'])
                 post_data = self.rfile.read(content_length)
                 try:
@@ -76,10 +76,10 @@ def start_api_web_server():
                     tweet_id     = order.get('tweet_id', '')
                     quantity     = int(order.get('quantity', 1))
                     
-                    print(f"\n📡 تم استقبال أمر قذف سحابي متزامن وموثوق!")
-                    print(f"🚀 الخدمة: {service_type} | المعرف: {tweet_id} | العدد: {quantity}")
+                    print(f"\n📡 تم لقط استقبال طلب فوري مباشر وموثوق من اللوحة الإلكترونية!")
+                    print(f"🚀 الخدمة المستهدفة: {service_type} | معرف التغريدة: {tweet_id} | كمية الحسابات: {quantity}")
                     
-                    # إطلاق الأتمتة فوراً بالتوازي لكل الحسابات عبر الـ Threads الخفيفة
+                    # توزيع المهام على الحسابات في نفس اللحظة عبر الـ Threads
                     selected_tokens = AUTH_TOKENS[:quantity]
                     for token in selected_tokens:
                         threading.Thread(target=send_x_action, args=(token, tweet_id, service_type), daemon=True).start()
@@ -92,12 +92,15 @@ def start_api_web_server():
                 except:
                     self.send_response(400)
                     self.end_headers()
+            else:
+                self.send_response(404)
+                self.end_headers()
 
         def do_GET(self):
             self.send_response(200)
             self.send_header("Content-type", "text/plain")
             self.end_headers()
-            self.wfile.write(b"X-Bot Secure API Server is Active!")
+            self.wfile.write(b"X-Bot Secure API Server is Active and Waiting for Live Requests!")
 
     server = HTTPServer(('0.0.0.0', port), APIServerHandler)
     server.serve_forever()
