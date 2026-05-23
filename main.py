@@ -36,6 +36,8 @@ def blast_x_with_proxy(token, tweet_id, service_type, proxy_ip):
         csrf_token = session.cookies.get('ct0', domain='.x.com')
         if not csrf_token:
             return
+        
+        # تعيين مسارات الروابط والـ API بناءً على الخدمة المطلوبة
         url = "https://x.com" if service_type == "comments" else "https://x.com"
         api_headers = {
             'Authorization': 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
@@ -45,11 +47,27 @@ def blast_x_with_proxy(token, tweet_id, service_type, proxy_ip):
             'Content-Type': 'application/json',
             'User-Agent': headers['User-Agent']
         }
-        payload = {}
+        
         if service_type == "comments":
-            payload = {"variables": {"tweet_text": "تم التنفيذ السحابي الجذري بنجاح واستقرار فوري! 🚀", "reply": {"in_reply_to_tweet_id": tweet_id}, "dark_request": false, "semantic_annotation_ids": []}, "features": {"tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled": true, "longform_notetweets_inline_comments_enabled": true, "responsive_web_edit_tweet_api_enabled": true}}
+            payload = {
+                "variables": {
+                    "tweet_text": "تم التنفيذ السحابي الجذري بنجاح واستقرار فوري! 🚀", 
+                    "reply": {"in_reply_to_tweet_id": tweet_id}, 
+                    "dark_request": False, 
+                    "semantic_annotation_ids": []
+                }, 
+                "features": {
+                    "tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled": True, 
+                    "longform_notetweets_inline_comments_enabled": True, 
+                    "responsive_web_edit_tweet_api_enabled": True
+                }
+            }
         else:
-            payload = {"variables": {"tweet_id": tweet_id}, "features": {"responsive_web_twitter_article_tweet_consumption_enabled": true}}
+            payload = {
+                "variables": {"tweet_id": tweet_id}, 
+                "features": {"responsive_web_twitter_article_tweet_consumption_enabled": True}
+            }
+            
         response = session.post(url, json=payload, headers=api_headers, cookies={'auth_token': token}, proxies=proxies, timeout=12)
         print(f"[💥 تقرير نجاح القذف] الحساب: {token[:10]}... | كود الاستجابة الفعلي لـ X: {response.status_code}")
     except:
@@ -69,39 +87,50 @@ class CloudBotServer(BaseHTTPRequestHandler):
     def do_POST(self):
         content_length = int(self.headers['Content-Length'])
         post_data = self.rfile.read(content_length)
+        
+        # إرسال استجابة بروتوكول HTTP وعناوين الـ CORS لفك حظر المتصفح فوراً
         self.send_response(200)
         self.send_cors_headers()
+        self.send_header('Content-Type', 'application/json')
         self.end_headers()
+        
         try:
             order = json.loads(post_data.decode('utf-8'))
             service_type = order.get('service_type', 'comments')
             tweet_id     = order.get('tweet_id', '')
             quantity     = int(order.get('quantity', 1))
             
-            print(f"\n📡 [إشارة فورية] تم استقبال أمر تشغيل من اللوحة!")
+            print(f"\n📡 [إشارة فورية] تم استقبال أمر تشغيل من اللوحة للخدمة: {service_type}")
+            print(f"🚀 التغريدة المستهدفة: {tweet_id} | الكمية: {quantity}")
+            
             free_proxies = fetch_free_proxies()
             selected_tokens = AUTH_TOKENS[:quantity]
             for token in selected_tokens:
                 assigned_proxy = random.choice(free_proxies) if free_proxies else None
                 threading.Thread(target=blast_x_with_proxy, args=(token, tweet_id, service_type, assigned_proxy), daemon=True).start()
-        except:
-            pass
+                
+            # استجابة JSON سليمة لتأكيد نجاح استلام الطلب داخل المتصفح
+            response_data = json.dumps({"status": "success", "message": "Order accepted and background execution started"})
+            self.wfile.write(response_data.encode('utf-8'))
+        except Exception as e:
+            print(f"⚠️ خطأ أثناء المعالجة الداخلية: {e}")
+            response_data = json.dumps({"status": "error", "message": str(e)})
+            self.wfile.write(response_data.encode('utf-8'))
 
     def do_GET(self):
-        self.send_response(200)
-        self.send_cors_headers()
-        self.send_header("Content-type", "text/plain; charset=utf-8")
-        self.end_headers()
-        
-        # [المسار الجذري الفوري]: استقبال ومعالجة الأوامر مباشرة من رابط شريط المتصفح فوراً
+        # معالجة الطلبات الواردة مباشرة من شريط المتصفح عبر طريقة GET
         if "/create_order" in self.path:
+            self.send_response(200)
+            self.send_cors_headers()
+            self.send_header("Content-type", "text/plain; charset=utf-8")
+            self.end_headers()
             try:
                 query_components = parse_qs(urlparse(self.path).query)
                 service_type = query_components.get("service_type", ["comments"])[0]
                 tweet_id     = query_components.get("tweet_id", [""])[0]
                 quantity     = int(query_components.get("quantity", [1])[0])
                 
-                print(f"\n📡 [إشارة جذريّة] لقط أمر تشغيل مباشر من المتصفح!")
+                print(f"\n📡 [إشارة جذريّة] لقط أمر تشغيل مباشر من المتصفح عبر رابط الـ GET!")
                 print(f"🚀 الخدمة: {service_type} | التغريدة: {tweet_id} | الكمية: {quantity}")
                 
                 free_proxies = fetch_free_proxies()
@@ -114,12 +143,16 @@ class CloudBotServer(BaseHTTPRequestHandler):
             except Exception as e:
                 self.wfile.write(f"⚠️ خطأ أثناء التفكيك البرمجي: {e}".encode("utf-8"))
         else:
+            self.send_response(200)
+            self.send_cors_headers()
+            self.send_header("Content-type", "text/plain; charset=utf-8")
+            self.end_headers()
             self.wfile.write(b"X-Bot Pro Proxy Rotation Core is Live and Ready!")
 
 def main():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(('0.0.0.0', port), CloudBotServer)
-    print("🛰️ المحرك انطلق سحابياً وهو جاهز للقذف المباشر...")
+    print(f"🛰️ المحرك انطلق سحابياً وهو جاهز للاستماع على المنفذ {port}...")
     server.serve_forever()
 
 if __name__ == "__main__":
